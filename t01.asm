@@ -1,8 +1,8 @@
-.data 0x10000000
+.data #0x10000000
 
 menu_text: .asciiz "Choose a option:\n1 - Read image\n2 - Save image\n3 - Blur effect\n4 - Edge Extractor\n5 - Thresholding\n6 - Exit\n\n>> "
 invalid_option: .asciiz "\nOption selected is invalid! Try another.\n"
-threshold_text: .asciiz "\nDigite um valor entre 0 e 255"
+threshold_text: .asciiz "\nDigite um valor entre 0 e 255\n\n>>"
 
 img_name: .asciiz "img.bmp"
 type: .space 2
@@ -196,17 +196,74 @@ edge_extractor:
 	j main
 	
 thresholding:
-	#Will read the image from $a0, which is $gp int this case, and will apply the invert colors filter.
+	# Print the menu text to the screen
+	la $a0, threshold_text
+	li $v0, 4
+	syscall
+	
+	# Read the integer of the selected option
+	li $v0, 5
+	syscall
+	
+	move $a3, $v0
+	
+	#Will read the image from $a0 and will apply the invert colors filter.
 	#The equation being used is:
 	#		I = 0,2989*R + 0,5870*G + 0,1140*B		
 	#	Use: $a0 and $a1 which are the image properties and data, respectively.		
 	add $a0, $s1, $zero
-	la $a1, 0x10008000
-	#add $a1, $s2, $zero
+	#la $a1, 0x10008000
+	add $a1, $s2, $zero
 	jal greyScale
+	jal threshold
 	#j menuOptsScr
 	#end invertColorsCall
 	j main
+	
+threshold:
+	add $t0, $a0, $zero
+	addi $t1, $zero, 54
+	addi $t2, $zero, 8
+	
+	mulu $t1, $t1, $t2
+	move $t2,$zero
+	
+	add $t1,$t1,$t0
+	
+	
+	#la $t2, 0x10008000		#t2: screen start address (iterative)
+	add $t2, $t1, $zero
+	lw $t3, height			
+	lw $t4, width			
+	mul $t3, $t3, $t4
+
+	li $t4, 1
+	
+	add $t5, $a3, $zero
+	
+	loop_threshold:
+		beq $t3, $t4, end_loop_threshold
+		
+		lbu $t6, 0($t2)
+		bltu $t6,$t5, black_threshold
+		addi $t7 $zero, 0x00FFFFFF
+		sw $t7,0($t2)
+		j final_threshold
+		
+	black_threshold:
+		addi $t7 $zero, 0x00000000
+		sw $t7,0($t2)
+		j final_threshold
+		
+	final_threshold:
+		add $t2, $t2, 4
+		add $t4, $t4, 1
+		j loop_threshold
+	end_loop_threshold:		
+	#end	
+
+	jr $ra
+	
 	
 greyScale:
 	#	Register usage:
@@ -221,10 +278,16 @@ greyScale:
 	
 
 	add $t0, $a0, $zero
-	add $t1, $a1, $zero
+	addi $t1, $zero, 54
+	addi $t2, $zero, 8
 	
-
-	la $t2, 0x10008000		#t2: screen start address (iterative)
+	mulu $t1, $t1, $t2
+	move $t2,$zero
+	
+	add $t1,$t1,$t0
+	
+	#la $t2, 0x10008000		#t2: screen start address (iterative)
+	add $t2, $t1, $zero
 
 	lw $t3, height			
 	lw $t4, width			
@@ -265,7 +328,6 @@ greyScale:
 	#end	
 
 	jr $ra
-
 #end greyScale
 
 # Print message for error in opening file
