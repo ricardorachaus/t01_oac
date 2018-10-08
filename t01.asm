@@ -1,18 +1,14 @@
-.data
+.data #0x10000000
 
 menu_text: .asciiz "Choose a option:\n1 - Read image\n2 - Save image\n3 - Blur effect\n4 - Edge Extractor\n5 - Thresholding\n6 - Exit\n\n>> "
 invalid_option: .asciiz "\nOption selected is invalid! Try another.\n"
+threshold_text: .asciiz "\nDigite um valor entre 0 e 255\n\n>>"
 
-input_file: .asciiz "img.bmp"
-output_file: .asciiz "output.bmp"
-
-header: .space 54
-	.align 2
+img_name: .asciiz "img.bmp"
 type: .space 2
 	.align 2
 size: .space 6
 	.align 2
-
 width: .space 4
 height: .space 4
 trash: .space 30
@@ -21,10 +17,9 @@ open_error_msg: .asciiz "Error opening the file.\n"
 read_error_msg: .asciiz "Error reading the file.\n"
 
 debug_msg: .asciiz "Error!\n"
-
+	
 .text
 
-# Display the menu
 main:
 
 	# Print the menu text to the screen
@@ -51,11 +46,15 @@ main:
 	syscall
 	j main
 	
-# Read the image and display
 read_img:
+
 	# Open the file
-	la $a0, input_file
-	jal open_file_for_reading
+	li $v0, 13
+	la $a0, img_name
+	la $a1, 0
+	la $a2, 0
+	syscall
+	blt $v0, $zero, open_file_error		# Check if there is a error opening.
 	
 	# Read the image for type
 	move $a0, $v0
@@ -64,7 +63,7 @@ read_img:
 	la $a1, type
 	la $a2, 2
 	syscall
-	blt $v0, $zero, read_file_error		# Check if there is a error reading
+	blt $v0, $zero, read_file_error		# Check if there is a error reading.
 	
 	# Get image size
 	li $v0, 14
@@ -127,95 +126,6 @@ read_img:
 
 	j main
 
-# Save the image on the output file
-save_img:
-	la $a0, input_file
-	jal open_file_for_reading
-
-	# Read header and close the original file
-	move $a0, $v0		# Get file descriptor
-	jal read_header
-	jal close_file
-	
-	# Write the header in the output file
-	la $a0, output_file
-	jal open_file_for_writing
-	move $a0, $v0
-	jal write_header
-	
-	# Write the rest of the file
-	
-	jal close_file
-
-	j main
-
-blur_effect:
-	j main
-
-edge_extractor:
-	j main
-	
-thresholding:
-	j main
-
-# Open a file for reading
-open_file_for_reading:
-	li $v0, 13
-	la $a1, 0
-	la $a2, 0
-	syscall
-	bltz $v0, open_file_error		# Check if there is a error opening.
-	
-	jr $ra
-
-# Open (or create) a file for writing
-open_file_for_writing:
-	li $v0, 13
-	la $a1, 1
-	la $a2, 0
-	syscall
-	bltz $v0, open_file_error		# Check if there is a error opening.
-	
-	jr $ra
-	
-# Read the header of a bmp file
-# To be used right after open_file
-read_header:
-	li $v0, 14
-	la $a1, header
-	la $a2, 54
-	syscall
-	bltz $v0, read_file_error		# Check if there is a error reading.
-	
-	jr $ra
-	
-# Write the header in the file
-write_header:
-	li $v0, 15
-	la $a1, header
-	addi $a2, $zero, 54
-	syscall
-	
-	jr $ra
-	
-# Close the file, pass file descriptor in $a0
-close_file:
-	li $v0, 16
-	syscall
-	jr $ra
-
-# Print message for error in opening file
-open_file_error:
-	la $a0, open_error_msg
-	jal print_str
-	j main
-	
-# Print message for error in reading file
-read_file_error:
-	la $a0, read_error_msg
-	jal print_str
-	j main
-
 # Load the image by each pixel to be displayed.
 load_image_to_be_display:
 	# Handle the width data of the image
@@ -241,15 +151,14 @@ load_image_to_be_display:
 	move $a1, $s2
 	syscall
 
-	move $t3, $s4 # Quantity of columns
+	move $t3, $s4 # Columns quantity
 	move $t4, $s1
 	subu $t2, $t2, $t0
 
 	j read_column
 
 # Change to 4 bytes and store image
-read_column:
-	beqz $t5, read_row
+read_column: 	beqz $t5, read_row
 	jal read_pixel
 	sw $t6, ($t4)
 	addi $t4, $t4, 4
@@ -276,6 +185,163 @@ read_pixel:
 	sll $t8, $t8, 16
 	or $t6, $t6, $t8
 	jr $ra
+
+save_img:
+	j main
+
+blur_effect:
+	j main
+
+edge_extractor:
+	j main
+	
+thresholding:
+	# Print the menu text to the screen
+	la $a0, threshold_text
+	li $v0, 4
+	syscall
+	
+	# Read the integer of the selected option
+	li $v0, 5
+	syscall
+	
+	move $a3, $v0
+	
+	#Will read the image from $a0 and will apply the invert colors filter.
+	#The equation being used is:
+	#		I = 0,2989*R + 0,5870*G + 0,1140*B		
+	#	Use: $a0 and $a1 which are the image properties and data, respectively.		
+	add $a0, $s1, $zero
+	#la $a1, 0x10008000
+	add $a1, $s2, $zero
+	jal greyScale
+	jal threshold
+	#j menuOptsScr
+	#end invertColorsCall
+	j main
+	
+threshold:
+	add $t0, $a0, $zero
+	addi $t1, $zero, 54
+	addi $t2, $zero, 8
+	
+	mulu $t1, $t1, $t2
+	move $t2,$zero
+	
+	add $t1,$t1,$t0
+	
+	
+	#la $t2, 0x10008000		#t2: screen start address (iterative)
+	add $t2, $t1, $zero
+	lw $t3, height			
+	lw $t4, width			
+	mul $t3, $t3, $t4
+
+	li $t4, 1
+	
+	add $t5, $a3, $zero
+	
+	loop_threshold:
+		beq $t3, $t4, end_loop_threshold
+		
+		lbu $t6, 0($t2)
+		bltu $t6,$t5, black_threshold
+		addi $t7 $zero, 0x00FFFFFF
+		sw $t7,0($t2)
+		j final_threshold
+		
+	black_threshold:
+		addi $t7 $zero, 0x00000000
+		sw $t7,0($t2)
+		j final_threshold
+		
+	final_threshold:
+		add $t2, $t2, 4
+		add $t4, $t4, 1
+		j loop_threshold
+	end_loop_threshold:		
+	#end	
+
+	jr $ra
+	
+	
+greyScale:
+	#	Register usage:
+	#		t0: data info address backup
+	#		t1: data address backup
+	#		t2: screen iterative address beggining by 0x10008000
+	#			t3(temporary): height of the image
+	#			t4(temporary): width of the image
+	#		t3: max number of iterations
+	#		t4: iterative index
+	#		t5: image byte
+	
+
+	add $t0, $a0, $zero
+	addi $t1, $zero, 54
+	addi $t2, $zero, 8
+	
+	mulu $t1, $t1, $t2
+	move $t2,$zero
+	
+	add $t1,$t1,$t0
+	
+	#la $t2, 0x10008000		#t2: screen start address (iterative)
+	add $t2, $t1, $zero
+
+	lw $t3, height			
+	lw $t4, width			
+	mul $t3, $t3, $t4
+
+	li $t4, 1				#t4: iterative index
+
+	loop_greyScale:
+		beq $t3, $t4, end_loop_greyScale
+		lbu $t5, 0($t2)
+		mul $t5, $t5, 1140
+		div $t5, $t5, 10000
+		lbu $t6, 1($t2)	 
+		mul $t6, $t6, 5870
+		div $t6, $t6, 10000
+		#sll $t6, $t6, 8
+		add $t5, $t5, $t6
+		lbu $t7, 2($t2)	
+		mul $t7, $t7, 2989
+		div $t7, $t7, 10000		
+		#sll $t7, $t7, 16
+		add $t5, $t5, $t7
+
+		add $t6, $t5, $zero
+		sll $t6, $t6, 8
+		add $t7, $t5, $zero
+		sll $t7, $t7, 16
+
+		add $t5,$t5, $t6
+		add $t5,$t5, $t7
+
+		sw $t5, 0($t2)
+
+		add $t2, $t2, 4
+		add $t4, $t4, 1
+		j loop_greyScale
+	end_loop_greyScale:		
+	#end	
+
+	jr $ra
+#end greyScale
+
+# Print message for error in opening file
+open_file_error:
+	la $a0, open_error_msg
+	jal print_str
+	j main
+	
+	
+# Print message for error in reading file
+read_file_error:
+	la $a0, read_error_msg
+	jal print_str
+	j main
 	
 # Print any string stored in $a0
 print_str:
